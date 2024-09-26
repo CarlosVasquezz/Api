@@ -1,7 +1,6 @@
 package com.example.api
 
 import android.os.Bundle
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -11,34 +10,53 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class MainActivity : AppCompatActivity() {
+
     private lateinit var recyclerView: RecyclerView
-    private lateinit var adapter: PhotoAdapter // Asegúrate de tener un adaptador para el RecyclerView
+    private lateinit var adapter: ItemAdapter
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        // Cambia recyclerView a recycler_view
-        recyclerView = findViewById(R.id.recycler_view) // Asegúrate de que el ID coincida con el XML
+        recyclerView = findViewById(R.id.recyclerView)
         recyclerView.layoutManager = LinearLayoutManager(this)
-        adapter = PhotoAdapter(listOf()) // Inicializa con una lista vacía
+
+        // Inicializa el adapter sin personajes al principio
+        adapter = ItemAdapter(emptyList(), RetrofitInstance.apiService)
         recyclerView.adapter = adapter
 
-        fetchPhotos()
+        // Carga los datos
+        fetchData()
     }
 
-    private fun fetchPhotos() {
+    private fun fetchData() {
         CoroutineScope(Dispatchers.IO).launch {
-            val response = RetrofitInstance.api.getPhotos()
-            withContext(Dispatchers.Main) {
-                if (response.isSuccessful) {
-                    response.body()?.let { photos ->
-                        adapter.updatePhotos(photos) // Asume que tienes un método para actualizar la lista en tu adaptador
-                    }
-                } else {
-                    Toast.makeText(this@MainActivity, "Error: ${response.message()}", Toast.LENGTH_SHORT).show()
+            var currentPage = 1
+            val allCharacters = mutableListOf<Character>()
+
+            do {
+                val characterResponse = RetrofitInstance.apiService.getCharacters(currentPage)
+                allCharacters.addAll(characterResponse.results)
+                currentPage++
+            } while (currentPage <= characterResponse.info.pages)
+
+            // Ahora obtenemos los episodios
+            val episodeResponse = RetrofitInstance.apiService.getEpisodes()
+            val episodes = episodeResponse.results.associateBy { it.url } // Mapea la URL a la información del episodio
+
+            // Asigna el nombre del primer episodio a cada personaje
+            allCharacters.forEach { character ->
+                if (character.episode.isNotEmpty()) {
+                    val episodeUrl = character.episode.first()
+                    character.firstEpisodeName = episodes[episodeUrl]?.name ?: "Unknown"
                 }
+            }
+
+            withContext(Dispatchers.Main) {
+                adapter.updateCharacters(allCharacters)
             }
         }
     }
+
 }
+
